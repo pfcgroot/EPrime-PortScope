@@ -1,0 +1,808 @@
+'
+'
+'
+'	D:\Projects\E-Prime\version_1\PortScope\PortScope.ebs
+'	Generated on: 2/5/2010	15:55:22
+'
+'
+'	This file generated with E-Studio interface.
+'	E-Prime Copyright © 1996-2005 Psychology Software Tools.
+'	ALL RIGHTS RESERVED
+'
+'	Legal use of this experiment script requires a full E-Prime or Runtime License.
+'
+'
+'	Author:
+'		Paul Groot - AMC Amsterdam - The Netherlands
+'
+'
+'
+'
+
+Option CStrings On
+Dim ebContext as Context
+
+
+'--------------------------------------------------------------------------
+' Class Declarations
+'--------------------------------------------------------------------------
+
+
+
+'--------------------------------------------------------------------------
+'InitTextDisplayDefaults
+'--------------------------------------------------------------------------
+Sub InitTextDisplayDefaults(theTextDisplay As TextDisplay)
+
+	If theTextDisplay Is Nothing Then Exit Sub
+
+	theTextDisplay.X = "center"
+	theTextDisplay.Y = "center"
+	theTextDisplay.Width = "100%"
+	theTextDisplay.Height = "100%"
+	theTextDisplay.ForeColor = CColor("black")
+	theTextDisplay.BackColor = CColor("white")
+	theTextDisplay.BackStyle = "opaque"
+	theTextDisplay.BorderColor = CColor("black")
+	theTextDisplay.BorderWidth = CLng("0")
+	theTextDisplay.XAlign = "center"
+	theTextDisplay.YAlign = "center"
+	theTextDisplay.AlignHorizontal = "center"
+	theTextDisplay.AlignVertical = "center"
+	theTextDisplay.WordWrap = True
+	theTextDisplay.ClearAfter = CLogical("No")
+	theTextDisplay.FontName = "Courier New"
+	theTextDisplay.FontSize = "18"
+	theTextDisplay.FontBold = CLogical("Yes")
+	theTextDisplay.FontItalic = CLogical("No")
+	theTextDisplay.FontUnderline = CLogical("No")
+	theTextDisplay.FontStrikeout = CLogical("No")
+
+End Sub
+
+
+
+
+'--------------------------------------------------------------------------
+' Instance Declarations
+'--------------------------------------------------------------------------
+Dim Display As DisplayDevice
+Dim Sound As SoundDevice
+Dim Keyboard As KeyboardDevice
+Dim Mouse As MouseDevice
+Dim SessionProc As Procedure
+
+Dim Splash As TextDisplay
+Dim SplashEchoClients As EchoClientCollection
+
+Dim RespDef As Wait
+Dim RespDefEchoClients As EchoClientCollection
+
+
+
+'--------------------------------------------------------------------------
+' Package Declare Script
+'--------------------------------------------------------------------------
+
+
+
+'--------------------------------------------------------------------------
+' User Script
+'--------------------------------------------------------------------------
+Dim IoPort%
+Dim IoMask%
+
+Function MustStop() as boolean
+	MustStop = GetuserBreakState()<>0
+End Function
+
+
+
+Function GetSample(iChannel as Integer) as Single
+'	GetSample = sin(Clock.Read()/10)*100 '+ random(0,50) - 25  ' << insert your own sampling here
+' 	GetSample = ReadPort(&H379) ' combination of all LPT inputs
+	GetSample = ReadPort(IoPort%) And IoMask%  ' Ack = bit 10 only
+End Function
+
+
+'--------------------------------------------------------------------------
+' Package Global Script
+'--------------------------------------------------------------------------
+
+
+
+'--------------------------------------------------------------------------
+' Package Routines
+'--------------------------------------------------------------------------
+
+
+
+'--------------------------------------------------------------------------
+' Implementation
+'--------------------------------------------------------------------------
+Sub SessionProc_Run(c as Context)
+	
+	'''''''''''''''''''''''''''''''''''''''''''''
+	' InLine - OpenIoPort BEGIN
+	'''''''''''''''''''''''''''''''''''''''''''''
+	' Open a port selection dialog and prepare the selected port
+
+If Not c.AttribExists("IoPort") Then c.SetAttrib "IoPort", "LPT1, ACK"
+
+' Determine if StartupInfo.UseDefaults exists and is True/False to override prompts for StartupInfo parameters
+Dim bStartupInfoUseDefaults As Boolean
+bStartupInfoUseDefaults = False
+If c.AttribExists("StartupInfo.UseDefaults") Then bStartupInfoUseDefaults = CLogical(c.GetAttrib("StartupInfo.UseDefaults"))
+If Not bStartupInfoUseDefaults Then
+	Dim vAnswer As Variant
+	Dim arrayChoicesIoPort(3)
+	arrayChoicesIoPort(0) = "LPT1, ACK"
+	arrayChoicesIoPort(1) = "COM1, DSR"
+	arrayChoicesIoPort(2) = "COM2, DSR"
+	vAnswer = SelectBox(, "Which IO Port?", arrayChoicesIoPort)
+	If vAnswer >= 0 then
+		c.SetAttrib "IoPort", arrayChoicesIoPort(vAnswer)
+	Else
+		Exit sub
+	End If
+End If
+
+'-----------------------------------------------------------------------------------
+' Parallel Printer Port (LPT)
+'
+' Pin No (D-Type 25) Pin No (Centronics) SPP Signal In/out Register 
+'   1                  1                 nStrobe    In/Out  Control HardwareInverted
+'   2                  2                 Data 0      Out     Data   
+'   3                  3                 Data 1      Out     Data   
+'   4                  4                 Data 2      Out     Data   
+'   5                  5                 Data 3      Out     Data   
+'   6                  6                 Data 4      Out     Data   
+'   7                  7                 Data 5      Out     Data   
+'   8                  8                 Data 6      Out     Data   
+'   9                  9                 Data 7      Out     Data   
+'  10                 10                 nAck         In    Status   
+'  11                 11                 Busy         In    Status  HardwareInverted
+'  12                 12                 Paper-Out    In    Status   
+'  13                 13                 Select       In    Status   
+'  14                 14                 Auto-LF   In/Out   Control HardwareInverted
+'  15                 32                 Error        In    Status   
+'  16                 31                 Init      In/Out   Control   
+'  17                 36                 Select    In/Out   Control HardwareInverted
+'  18 - 25            19-30              Ground      Gnd     
+'
+' LPT Base + 1 Status Port Read Only 
+' Bit 7 Busy 
+' Bit 6 Ack 
+' Bit 5 Paper Out 
+' Bit 4 Select In 
+' Bit 3 Error 
+' Bit 2 IRQ (Not) 
+' Bit 1 Reserved 
+' Bit 0 Reserved 
+'
+' LPT Base + 2 Control Port Read/Write 
+' Bit 7 Unused 
+' Bit 6 Unused 
+' Bit 5 Enable Bi-Directional Port 
+' Bit 4 Enable IRQ Via Ack Line 
+' Bit 3 Select Printer 
+' Bit 2 Initialize Printer (Reset) 
+' Bit 1 Auto Linefeed 
+' Bit 0 Strobe 
+'
+'----------------------------------------------------------------------------
+' RS232 PORT
+' Name	BaseAdr	IRQ	
+' COM 1	3F8		4
+' COM 2	2F8		3
+' COM 3	3E8		4
+' COM 4	2E8		3
+'Modem Status Register (MSR) is on BASE address + 6
+'Bit	Notes
+'Bit 7	Carrier Detect
+'Bit 6	Ring Indicator
+'Bit 5	Data Set Ready  (DSR is used with Siemens trigger box in RS232 mode)
+'Bit 4	Clear To Send
+'Bit 3	Delta Data Carrier Detect
+'Bit 2	Trailing Edge Ring Indicator
+'Bit 1	Delta Data Set Ready
+'Bit 0	Delta Clear to Send
+
+Select Case c.GetAttrib("IoPort")
+Case "LPT1, ACK"
+	IoPort% = &H378 + 1
+	IoMask% = &H40  ' ACK = pin 10 = bit 6
+Case "COM1, DSR"
+	IoPort% = &H3F8 + 6
+	IoMask% = &H20  ' DSR = pin 6  = bit 5
+Case "COM2, DSR"
+	IoPort% = &H2F8 + 6
+	IoMask% = &H20  ' DSR = pin 6  = bit 5
+Case Else
+	Debug.Assert False
+End Select
+
+
+' to be able to read the status of the COM ports we must open the device explicitly
+Dim SerialDummy As SerialDevice
+Dim ComPort as Integer
+if IoPort%>=&H3F8 And IoPort%<=&H3F8+8 then
+	ComPort = 1
+elseif IoPort%>=&H2F8 And IoPort%<=&H2F8+8 then
+	ComPort = 2
+else
+	ComPort = 0
+end if
+if ComPort>0 then
+	Set SerialDummy = New SerialDevice
+	SerialDummy.Name = "SerialDummy"
+
+	Dim SerialSerialDeviceInfo As SerialDeviceInfo
+	SerialSerialDeviceInfo.CommPort = ComPort
+	SerialSerialDeviceInfo.BaudRate = 9600
+	SerialSerialDeviceInfo.DataBits = 8
+	SerialSerialDeviceInfo.Parity = ebParityNo
+	SerialSerialDeviceInfo.StopBits = ebStopBits1_0
+
+	SerialDummy.Open SerialSerialDeviceInfo
+	if SerialDummy.GetState() = ebStateOpen then
+		Debug.Print "Opened dummy port COM" & SerialSerialDeviceInfo.CommPort
+	else
+		MsgBox("Couldn't open serial port: COM" & ComPort)
+	end if
+end if
+
+	'''''''''''''''''''''''''''''''''''''''''''''
+	' InLine - OpenIoPort END
+	'''''''''''''''''''''''''''''''''''''''''''''
+	
+	
+	
+	Splash.InputMasks.Reset
+	
+	If Keyboard.GetState() = ebStateOpen Then
+		SplashEchoClients.RemoveAll
+		Splash.InputMasks.Add Keyboard.CreateInputMask("{ANY}", "", CLng(Splash.Duration), CLng("1"), ebEndResponseActionTerminate, CLogical("Yes"), "", "", "ResponseMode:All ProcessBackspace:Yes")
+
+	
+	End If
+
+	Splash.Run
+	
+	'''''''''''''''''''''''''''''''''''''''''''''
+	' InLine - RunScope BEGIN
+	'''''''''''''''''''''''''''''''''''''''''''''
+	Dim cnvs As Canvas
+Set cnvs = Display.Canvas
+Dim sw As Integer
+Dim sh As Integer
+Dim x As Integer
+Dim xPrev As Integer
+Dim xErased As Integer
+Dim y As Integer
+Dim value as Single
+Dim r As Rect
+Dim nChannels As Integer
+Dim iTriggerChannel as Integer
+Dim fTriggerThreshold as Single
+Dim bFallingTrigger as Single
+Dim lTriggerOnset as Long
+Dim s as String
+Dim tw&, th&
+
+Const OUTPUT_PORT% = &H378 ' set to non-zero value to send a trigger
+
+Const ERASE_DX% = 50
+Const MAX_CHANNELS% = 8
+
+' optional trigger
+iTriggerChannel = 0     ' set to zero to disable trigger
+fTriggerThreshold = 0   '
+bFallingTrigger = false
+
+' y' = a.y + b
+Dim a(1 to MAX_CHANNELS%) as single
+Dim b(1 to MAX_CHANNELS%) as single
+Dim yPrev(1 to MAX_CHANNELS%)
+dim iChannel as integer
+for iChannel=1 to MAX_CHANNELS
+	a(iChannel) = -1 ' y goes positive down
+	b(iChannel) = 0
+next
+
+sw = Display.Xres
+sh = Display.Yres
+
+cnvs.PenWidth = 0
+cnvs.PenColor = CColor("0,0,255")
+cnvs.FillColor = CColor("yellow")
+
+Dim background As Canvas
+Set background = Display.CreateCanvas		
+
+
+r.Top = 0
+r.Bottom = sh-1
+
+background.PenWidth = 0
+background.PenColor = CColor("192,192,192")
+' baselines for all channels
+nChannels=1
+for iChannel=1 to nChannels
+	b(iChannel) = ((iChannel-0.5)*sh)/nChannels
+	background.Line 0, b(iChannel), sw-1, b(iChannel)
+next
+' vertical grid lines on background
+Dim iGrid as Integer
+Dim dGrid as Integer
+Const nGrid% = 4
+dGrid = sw/nGrid
+for iGrid=1 to nGrid-1
+	x = iGrid*dGrid
+	background.Line x, 0, x, sh-1
+next
+
+Do
+	xPrev = 0
+	xErased = 0
+
+	if iTriggerChannel>0 And iTriggerChannel<=nChannels then
+		if bFallingTrigger then
+			Do
+			Loop while Not MustStop() And GetSample(iTriggerChannel)<=fTriggerThreshold
+			Do
+			Loop while Not MustStop() And GetSample(iTriggerChannel)>fTriggerThreshold
+		else
+			Do
+			Loop while Not MustStop() And GetSample(iTriggerChannel)>=fTriggerThreshold
+			Do
+			Loop while Not MustStop() And GetSample(iTriggerChannel)<fTriggerThreshold
+		end if
+	end if
+	lTriggerOnset = Clock.Read
+
+	For x=0 to sw-1
+		if x>=xErased then
+			' erase some area just before the 'cursor'
+			r.Left = xErased
+			r.Right = x+ERASE_DX%
+			if r.Right>=sw then r.Right=sw-1
+			xErased = r.Right
+			if r.Left<>r.Right then cnvs.Copy background, r, r
+		end if
+		for iChannel=1 to nChannels
+			value = GetSample(iChannel)
+			y = a(iChannel)*value + b(iChannel)
+			cnvs.Line xPrev, yPrev(iChannel), x, y
+			if (x mod 250) = 0 then ' update value at left side onze in a while
+				s = value
+				cnvs.CalculateTextSize s, tw, th
+				cnvs.Text 0, y-th, s
+			end if
+			yPrev(iChannel) = y
+		next
+		xPrev = x
+		' check is we are 'at' a vertical grid line
+		if (x mod dGrid)=0 then
+			s = Clock.Read() - lTriggerOnset
+			cnvs.CalculateTextSize s, tw, th
+			cnvs.Text x-tw, sh-th, s
+		end if
+
+		' optional signal generation
+		if OUTPUT_PORT%>0 then
+			if (x=10) then WritePort OUTPUT_PORT%, 1
+'			Sleep(1)
+			if (x=20) then WritePort OUTPUT_PORT%, 0 
+		end if
+'sleep 1
+	Next
+'sleep 500
+Loop while Not MustStop()
+
+	'''''''''''''''''''''''''''''''''''''''''''''
+	' InLine - RunScope END
+	'''''''''''''''''''''''''''''''''''''''''''''
+	
+	
+	'''''''''''''''''''''''''''''''''''''''''''''
+	' InLine - CloseIoPort BEGIN
+	'''''''''''''''''''''''''''''''''''''''''''''
+	
+if Not SerialDummy Is Nothing then
+	if SerialDummy.GetState() = ebStateOpen then
+		SerialDummy.Close
+	end if
+	Set SerialDummy = Nothing
+end if
+
+
+	'''''''''''''''''''''''''''''''''''''''''''''
+	' InLine - CloseIoPort END
+	'''''''''''''''''''''''''''''''''''''''''''''
+	
+
+	 
+
+
+#If RUNTIME_VERSION_MAJOR > 1  Or (RUNTIME_VERSION_MAJOR = 1 And RUNTIME_VERSION_MINOR >= 2) Then
+	' Log clock timing information
+	c.SetAttrib "Clock.Information", Clock.Information
+#End If
+
+
+	c.Log
+End Sub
+
+
+
+'--------------------------------------------------------------------------
+' InitDevices
+'
+'--------------------------------------------------------------------------
+Sub InitDevices(c As Context)
+
+
+
+	SetOSThreadPriority 3
+
+
+	Set Display = New DisplayDevice
+	Display.Name = "Display"
+
+	Dim DisplayDisplayDeviceInfo As DisplayDeviceInfo
+	DisplayDisplayDeviceInfo.XRes = 1024
+	DisplayDisplayDeviceInfo.YRes = 768
+	DisplayDisplayDeviceInfo.ColorDepth = 16
+	DisplayDisplayDeviceInfo.RefreshRate = 0
+	DisplayDisplayDeviceInfo.NumPages = 0
+	
+	'Load values from context if they exist
+	If c.AttribExists(Display.Name & ".XRes") Then DisplayDisplayDeviceInfo.XRes = CLng(c.GetAttrib(Display.Name & ".XRes"))
+	If c.AttribExists(Display.Name & ".YRes") Then DisplayDisplayDeviceInfo.YRes = CLng(c.GetAttrib(Display.Name & ".YRes"))
+	If c.AttribExists(Display.Name & ".ColorDepth") Then DisplayDisplayDeviceInfo.ColorDepth = CLng(c.GetAttrib(Display.Name & ".ColorDepth"))
+
+	'Open the device, unless the context values indicate otherwise
+	Dim DisplayOpen As Boolean
+	DisplayOpen = True
+	If c.AttribExists(Display.Name & ".Open") Then DisplayOpen = CLogical(c.GetAttrib(Display.Name & ".Open"))
+	If DisplayOpen = True Then
+		Display.Open DisplayDisplayDeviceInfo
+		c.SetAttrib Display.Name & ".RefreshRate", Format$(Display.CalculatedRefreshRate, "0.000")
+	End If
+
+	Set Sound = New SoundDevice
+	Sound.Name = "Sound"
+
+	Dim SoundSoundOutDeviceInfo As SoundDeviceInfo
+	SoundSoundOutDeviceInfo.Channels = 2
+	SoundSoundOutDeviceInfo.SamplesPerSecond = 22050
+	SoundSoundOutDeviceInfo.BitsPerSample = 16
+	'Load values from context if they exist
+	If c.AttribExists(Sound.Name & ".Channels") Then SoundSoundOutDeviceInfo.Channels = CLng(c.GetAttrib(Sound.Name & ".Channels"))
+	If c.AttribExists(Sound.Name & ".SamplesPerSecond") Then SoundSoundOutDeviceInfo.SamplesPerSecond = CLng(c.GetAttrib(Sound.Name & ".SamplesPerSecond"))
+	If c.AttribExists(Sound.Name & ".BitsPerSample") Then SoundSoundOutDeviceInfo.BitsPerSample = CLng(c.GetAttrib(Sound.Name & ".BitsPerSample"))
+
+	Set Keyboard = New KeyboardDevice
+	Keyboard.Name = "Keyboard"
+
+	Dim KeyboardKeyboardDeviceInfo as KeyboardDeviceInfo
+	KeyboardKeyboardDeviceInfo.CollectionMode = ebPressesOnly
+	KeyboardKeyboardDeviceInfo.CapsLock = ebCapsLockOff
+	KeyboardKeyboardDeviceInfo.NumLock = ebNumLockOn
+	'Load values from context if they exist
+	If c.AttribExists(Keyboard.Name & ".CollectionMode") Then KeyboardKeyboardDeviceInfo.CollectionMode = CLng(c.GetAttrib(Keyboard.Name & ".CollectionMode"))
+	If c.AttribExists(Keyboard.Name & ".CapsLock") Then KeyboardKeyboardDeviceInfo.CapsLock = CLng(c.GetAttrib(Keyboard.Name & ".CapsLock"))
+	If c.AttribExists(Keyboard.Name & ".NumLock") Then KeyboardKeyboardDeviceInfo.NumLock = CLng(c.GetAttrib(Keyboard.Name & ".NumLock"))
+	If c.AttribExists(Keyboard.Name & ".EmulateDeviceName") Then KeyboardKeyboardDeviceInfo.EmulateDeviceName = c.GetAttrib(Keyboard.Name & ".EmulateDeviceName")
+
+	'Open the device, unless the context values indicate otherwise
+	Dim KeyboardOpen As Boolean
+	KeyboardOpen = True
+	If c.AttribExists(Keyboard.Name & ".Open") Then KeyboardOpen = CLogical(c.GetAttrib(Keyboard.Name & ".Open"))
+	If KeyboardOpen = True Then
+		Keyboard.Open KeyboardKeyboardDeviceInfo
+	End If
+
+	Set Mouse = New MouseDevice
+	Mouse.Name = "Mouse"
+
+	Dim MouseMouseDeviceInfo as MouseDeviceInfo
+	MouseMouseDeviceInfo.OpenMode = ebMouseOpenModeDirect
+	MouseMouseDeviceInfo.CollectionMode = ebPressesOnly
+	MouseMouseDeviceInfo.ShowCursor = False
+	'Load values from context if they exist
+	If c.AttribExists(Mouse.Name & ".OpenMode") Then MouseMouseDeviceInfo.OpenMode = CLng(c.GetAttrib(Mouse.Name & ".OpenMode"))
+	If c.AttribExists(Mouse.Name & ".CollectionMode") Then MouseMouseDeviceInfo.CollectionMode = CLng(c.GetAttrib(Mouse.Name & ".CollectionMode"))
+	If c.AttribExists(Mouse.Name & ".ShowCursor") Then MouseMouseDeviceInfo.ShowCursor = CLogical(c.GetAttrib(Mouse.Name & ".ShowCursor"))
+	If c.AttribExists(Mouse.Name & ".EmulateDeviceName") Then MouseMouseDeviceInfo.EmulateDeviceName = c.GetAttrib(Mouse.Name & ".EmulateDeviceName")
+
+	'Open the device, unless the context values indicate otherwise
+	Dim MouseOpen As Boolean
+	MouseOpen = True
+	If c.AttribExists(Mouse.Name & ".Open") Then MouseOpen = CLogical(c.GetAttrib(Mouse.Name & ".Open"))
+	If MouseOpen = True Then
+		Mouse.Open MouseMouseDeviceInfo
+	End If
+
+
+	SetOSThreadPriority 0
+
+End Sub
+
+
+
+'--------------------------------------------------------------------------
+' InitObjects
+'
+'--------------------------------------------------------------------------
+Sub InitObjects(c As Context)
+
+	Set SessionProc = New Procedure
+	SessionProc.Name = "SessionProc"
+	SessionProc.Tag = ""
+	SessionProc.Subroutine = "SessionProc_Run"
+
+	Set Splash = New TextDisplay
+	Splash.Name = "Splash"
+	Splash.Tag = ""
+
+	Set SplashEchoClients = New EchoClientCollection
+
+	InitTextDisplayDefaults Splash
+
+	Splash.Text = "Paul's tiny IO port oscilloscope\n(tracking the status of the selected input line)\n\n\npress any key to start.\n\npress Ctrl-Shift to stop.\n\n\n\n\n" &_ 
+				"\n\n(c) 2008-2010 - Academic Medical Centre Amsterdam - Radiology"
+	Splash.Duration = CLng("-1")
+	Splash.TimingMode = ebTimingModeEvent
+	Splash.PreRelease = Val("0")
+
+	Splash.OnsetSync = 1
+	Splash.OffsetSync = 0
+
+	Set RespDef = New Wait
+	RespDef.Name = "RespDef"
+	RespDef.Tag = ""
+
+	Set RespDefEchoClients = New EchoClientCollection
+	RespDef.Duration = CLng("0")
+	RespDef.TimingMode = ebTimingModeEvent
+	RespDef.PreRelease = Val("0")
+
+	RespDef.OnsetSync = 0
+	RespDef.OffsetSync = 0
+
+
+End Sub
+
+
+'--------------------------------------------------------------------------
+' InitPackages
+'
+'--------------------------------------------------------------------------
+Sub InitPackages(c As Context)
+
+End Sub
+
+
+
+'--------------------------------------------------------------------------
+' InitGlobals
+'
+'--------------------------------------------------------------------------
+Sub InitGlobals(c As Context)
+
+End Sub
+
+
+
+'--------------------------------------------------------------------------
+
+
+'--------------------------------------------------------------------------
+'--------------------------------------------------------------------------
+' UnInitGlobals
+'--------------------------------------------------------------------------
+Sub UnInitGlobals()
+End Sub
+'--------------------------------------------------------------------------
+' UnInitDevices
+'--------------------------------------------------------------------------
+Sub UnInitDevices()
+	Display.Close
+	Set Display = Nothing
+
+	Keyboard.Close
+	Set Keyboard = Nothing
+
+	Mouse.Close
+	Set Mouse = Nothing
+
+End Sub
+
+
+'--------------------------------------------------------------------------
+'--------------------------------------------------------------------------
+' UnInitPackages
+'--------------------------------------------------------------------------
+Sub UnInitPackages()
+End Sub
+
+
+'--------------------------------------------------------------------------
+' UnInitObjects
+'
+'--------------------------------------------------------------------------
+Sub UnInitObjects()
+
+	Set SessionProc = Nothing
+
+	Set Splash = Nothing
+
+	Set SplashEchoClients = Nothing
+
+	Set RespDef = Nothing
+
+	Set RespDefEchoClients = Nothing
+
+
+End Sub
+
+
+'--------------------------------------------------------------------------
+' Main
+'
+'--------------------------------------------------------------------------
+Sub Main()
+
+	' Create and initialize the default context, data file,
+	' and provide global access to the context.
+	Dim c As Context
+	Set c = New Context
+	Set c.DataFile = New DataFile
+	c.PushNewFrame
+	Set ebContext = c
+
+	' Set the log level names
+	c.SetLogLevelName 1, "Session"
+	c.SetLogLevelName 2, "Block"
+	c.SetLogLevelName 3, "Trial"
+	c.SetLogLevelName 4, "SubTrial"
+	c.SetLogLevelName 5, "LogLevel5"
+	c.SetLogLevelName 6, "LogLevel6"
+	c.SetLogLevelName 7, "LogLevel7"
+	c.SetLogLevelName 8, "LogLevel8"
+	c.SetLogLevelName 9, "LogLevel9"
+	c.SetLogLevelName 10, "LogLevel10"
+
+	' Set standard logging items
+	ebContext.SetAttrib "Experiment", "PortScope"
+	ebContext.SetAttrib "SessionDate", Date$
+	ebContext.SetAttrib "SessionTime", Time$
+
+	'Initialize global variables for packages
+	InitGlobals c
+
+	CreateDefaultPort
+
+	If Basic.OS = ebWin32 Then
+		WinActivate "E-Run Experiment Window"
+	End If
+
+	' Get the StartupInfo
+
+	' Set the defaults for all of the StartupInfo
+	If Not c.AttribExists("Subject") Then c.SetAttrib "Subject", "0"
+	If Not c.AttribExists("Session") Then c.SetAttrib "Session", "1"
+
+	' Determine if StartupInfo.UseDefaults exists and is True/False to override prompts for StartupInfo parameters
+	Dim bStartupInfoUseDefaults As Boolean
+	bStartupInfoUseDefaults = False
+	If c.AttribExists("StartupInfo.UseDefaults") Then bStartupInfoUseDefaults = CLogical(c.GetAttrib("StartupInfo.UseDefaults"))
+	If Not bStartupInfoUseDefaults Then
+
+		Dim vAnswer As Variant
+StartupInfo_Begin:
+
+	End If
+
+
+	'If the attribute Clock.Scale.Override exists
+	'  then use it for to set the Clock.Scale value
+	If c.AttribExists("Clock.Scale.Override") Then
+		Clock.Scale = CDbl(c.GetAttrib("Clock.Scale.Override"))
+	End If
+
+	' Set the Filenames for the data files
+	Dim strFilenameRecovery As String
+	Dim strFilenameEDAT As String
+
+	'If the attribute DataFile.Filename.Override exists
+	'  then use it for the .txt and .edat filenames
+	If c.AttribExists("DataFile.Filename.Override") Then
+
+		' Set the default Data Filename
+		strFilenameRecovery = CStr(c.GetAttrib("DataFile.Filename.Override")) & ".txt"
+		strFilenameEDAT = CStr(c.GetAttrib("DataFile.Filename.Override")) & ".edat"
+
+	Else
+
+		' Set the default Data Filename
+		strFilenameRecovery = CStr(c.GetAttrib("Experiment")) & "-" & CStr(c.GetAttrib("Subject")) & "-" & CStr(c.GetAttrib("Session")) & ".txt"
+		strFilenameEDAT = CStr(c.GetAttrib("Experiment")) & "-" & CStr(c.GetAttrib("Subject")) & "-" & CStr(c.GetAttrib("Session")) & ".edat"
+
+	End If
+
+	'Set the name of the data file
+	c.DataFile.Filename = strFilenameRecovery
+
+	' If we are logging data, then prompt to overwrite the data file if it exists
+	If CLng(c.GetAttrib("Subject")) <> 0 Then
+		If FileExists(c.DataFile.Filename) Or FileExists(strFilenameEDAT) Then
+			If ebYes <> MsgBox("WARNING: The data file and/or recovery file already exists:\nFILE: " & c.DataFile.Filename & "\n\nDo you want to overwrite?", ebYesNo + ebQuestion) Then
+				GoTo ExperimentAbort
+			End If
+		End If
+	End If
+
+	' Set defaults for RandomSeed and GroupNumber if StartupInfo did not assign their values
+	If Not c.AttribExists("RandomSeed") Then c.SetAttrib "RandomSeed", PRNG.GetSeed()
+	If Not c.AttribExists("Group") Then c.SetAttrib "Group", "1"
+
+	'Set the random seed
+	Randomize CLng(c.GetAttrib("RandomSeed"))
+
+	' Initialize all system devices, packages, and objects
+	InitDevices c
+	InitPackages c
+	InitObjects c
+
+	' If we are logging data, then open the datafile
+	If CLng(c.GetAttrib("Subject")) <> 0 Then
+		c.DataFile.Open
+		c.LogHeader
+	End If
+
+
+
+#If RUNTIME_VERSION_MAJOR > 1  Or (RUNTIME_VERSION_MAJOR = 1 And RUNTIME_VERSION_MINOR >= 2) Then
+	' Log clock timing information
+	c.SetAttrib "Clock.Information", Clock.Information
+#End If
+
+	' Start the running of the Experiment
+	SessionProc.Run c
+
+	' Clean up the context and close the datafile
+	If CLng(c.GetAttrib("Subject")) <> 0 Then
+		c.DataFile.Close
+		' Attempt to convert the recovery file into a data file
+		Dim nConvert As Long
+		nConvert = c.DataFile.Convert(ebProgressSimple)
+		If nConvert = 0 Then
+			' Settings in E-Studio are set to not remove E-Recovery file
+		Else
+			' The datafile failed to convert!
+			MsgBox "ERROR: The datafile did not convert!\nFILE: " & c.DataFile.Filename & "\n\nIt is recommended that you recover your data with the E-Recovery utility"
+			MsgBox c.DataFile.GetLastErrorMessage()
+		End If
+	End If
+ExperimentFinish:
+
+	UnInitObjects
+
+	UnInitPackages
+	UnInitDevices
+
+	UnInitGlobals
+
+ExperimentAbort:
+
+	' Clean up the context
+	c.PopFrame
+	Set c = Nothing
+	Set ebContext = Nothing
+
+	DestroyDefaultPort
+
+End Sub
